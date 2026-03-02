@@ -1,0 +1,274 @@
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { ChefHat, Sparkles, Plus, X, Loader2, UtensilsCrossed, Flame, FlameKindling } from 'lucide-react';
+import { generateMenu, generateRecipeImage, Menu } from './services/gemini';
+import { RecipeCard } from './components/RecipeCard';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+export default function App() {
+  const [essentialIngredients, setEssentialIngredients] = useState<string[]>([]);
+  const [inputValue, setInputValue] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [menu, setMenu] = useState<Menu | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [spicyPreference, setSpicyPreference] = useState<'spicy' | 'non-spicy' | 'any'>('any');
+
+  const handleAddIngredient = () => {
+    if (inputValue.trim() && !essentialIngredients.includes(inputValue.trim())) {
+      setEssentialIngredients([...essentialIngredients, inputValue.trim()]);
+      setInputValue('');
+    }
+  };
+
+  const handleRemoveIngredient = (ing: string) => {
+    setEssentialIngredients(essentialIngredients.filter((i) => i !== ing));
+  };
+
+  const handleGenerate = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const newMenu = await generateMenu(essentialIngredients, spicyPreference);
+      
+      // Generate images in parallel
+      const dishImages = await Promise.all(
+        newMenu.dishes.map(dish => generateRecipeImage(dish.name))
+      );
+      const soupImage = await generateRecipeImage(newMenu.soup.name);
+
+      newMenu.dishes.forEach((dish, i) => {
+        dish.imageUrl = dishImages[i];
+      });
+      newMenu.soup.imageUrl = soupImage;
+
+      setMenu(newMenu);
+    } catch (err) {
+      console.error(err);
+      setError('生成失败，请稍后再试。');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen pb-20">
+      {/* Hero Section */}
+      <header className="relative h-[40vh] flex items-center justify-center overflow-hidden bg-slate-900">
+        <div className="absolute inset-0 opacity-40">
+          <img 
+            src="https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=2070" 
+            alt="Food Background"
+            className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
+          />
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#FDFCFB]" />
+        
+        <div className="relative z-10 text-center px-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white text-xs font-bold tracking-widest uppercase mb-6"
+          >
+            <Sparkles size={14} className="text-orange-400" />
+            <span>AI 智能食谱生成</span>
+          </motion.div>
+          <motion.h1 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-5xl md:text-7xl font-bold text-slate-900 tracking-tight mb-4"
+          >
+            家常<span className="text-orange-600">三菜一汤</span>
+          </motion.h1>
+          <motion.p 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="text-slate-500 max-w-lg mx-auto text-lg"
+          >
+            不再为下一顿吃什么而烦恼。为您和家人定制荤素搭配、营养均衡的完美晚餐。
+          </motion.p>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 -mt-12 relative z-20">
+        {/* Controls Card */}
+        <section className="bg-white rounded-[2rem] p-8 recipe-card-shadow border border-slate-100 mb-12">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+            <div className="lg:col-span-2">
+              <h2 className="text-sm font-bold text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+                <ChefHat size={18} className="text-slate-900" />
+                必备原材料
+              </h2>
+              
+              <div className="flex flex-wrap gap-2 mb-6">
+                <AnimatePresence mode="popLayout">
+                  {essentialIngredients.map((ing) => (
+                    <motion.span
+                      key={ing}
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.8, opacity: 0 }}
+                      className="inline-flex items-center gap-1 bg-orange-50 text-orange-700 px-4 py-2 rounded-2xl border border-orange-100 font-medium text-sm"
+                    >
+                      {ing}
+                      <button 
+                        onClick={() => handleRemoveIngredient(ing)}
+                        className="hover:text-orange-900 transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
+                    </motion.span>
+                  ))}
+                </AnimatePresence>
+                
+                <div className="flex-1 min-w-[200px] relative">
+                  <input 
+                    type="text"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddIngredient()}
+                    placeholder="输入家里有的食材，如：土豆、排骨..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                  />
+                  <button 
+                    onClick={handleAddIngredient}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+              </div>
+              
+              <p className="text-xs text-slate-400">
+                提示：添加您现有的食材，AI 将优先围绕这些食材设计菜谱。
+              </p>
+
+              <div className="mt-8">
+                <h2 className="text-sm font-bold text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                  <Flame size={18} className="text-slate-900" />
+                  口味偏好
+                </h2>
+                <div className="flex gap-3">
+                  {[
+                    { id: 'any', label: '不限', icon: UtensilsCrossed },
+                    { id: 'non-spicy', label: '不辣', icon: FlameKindling },
+                    { id: 'spicy', label: '辣', icon: Flame },
+                  ].map((pref) => (
+                    <button
+                      key={pref.id}
+                      onClick={() => setSpicyPreference(pref.id as any)}
+                      className={cn(
+                        "flex items-center gap-2 px-6 py-3 rounded-2xl border transition-all font-medium text-sm",
+                        spicyPreference === pref.id
+                          ? "bg-slate-900 text-white border-slate-900 shadow-md"
+                          : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                      )}
+                    >
+                      <pref.icon size={16} className={spicyPreference === pref.id ? "text-orange-400" : "text-slate-400"} />
+                      {pref.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col justify-center">
+              <button
+                onClick={handleGenerate}
+                disabled={loading}
+                className={cn(
+                  "w-full py-6 rounded-[1.5rem] font-bold text-lg transition-all flex items-center justify-center gap-3",
+                  loading 
+                    ? "bg-slate-100 text-slate-400 cursor-not-allowed" 
+                    : "bg-orange-600 text-white hover:bg-orange-700 shadow-lg shadow-orange-600/20 active:scale-[0.98]"
+                )}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="animate-spin" />
+                    正在为您构思...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={20} />
+                    随机生成三菜一汤
+                  </>
+                )}
+              </button>
+              {error && (
+                <p className="text-red-500 text-xs mt-4 text-center">{error}</p>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* Results Section */}
+        <AnimatePresence mode="wait">
+          {menu ? (
+            <motion.div
+              key="results"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="space-y-12"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-6">
+                <div>
+                  <h2 className="text-3xl font-bold text-slate-900">今日推荐组合</h2>
+                  <p className="text-slate-500 mt-1">为您精心挑选的荤素搭配方案</p>
+                </div>
+                <div className="hidden md:flex gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-600">3</div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">精选菜肴</div>
+                  </div>
+                  <div className="w-px h-8 bg-slate-100 self-center" />
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">1</div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">滋补汤品</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {menu.dishes.map((dish, idx) => (
+                  <RecipeCard key={idx} recipe={dish} index={idx} />
+                ))}
+                <RecipeCard recipe={menu.soup} index={3} />
+              </div>
+            </motion.div>
+          ) : !loading && (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-center py-20 border-2 border-dashed border-slate-100 rounded-[3rem]"
+            >
+              <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                <UtensilsCrossed size={32} className="text-slate-300" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">准备好开始了吗？</h3>
+              <p className="text-slate-400 max-w-xs mx-auto">
+                点击上方按钮，让 AI 为您生成今日的惊喜菜单。
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+
+      {/* Footer */}
+      <footer className="mt-20 border-t border-slate-100 pt-10 text-center">
+        <p className="text-slate-400 text-sm">
+          由 Gemini AI 强力驱动 · 开启您的美味生活
+        </p>
+      </footer>
+    </div>
+  );
+}
